@@ -69,7 +69,17 @@ export class SqlServerStorage implements IStorage {
           password NVARCHAR(255) NOT NULL,
           role NVARCHAR(50) NOT NULL CHECK (role IN ('admin', 'employee', 'vendor')),
           walletBalance DECIMAL(10,2) DEFAULT 0
-        )
+        );
+
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='transactions' and xtype='U')
+        CREATE TABLE transactions (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          employeeId INT FOREIGN KEY REFERENCES users(id),
+          vendorId INT FOREIGN KEY REFERENCES users(id),
+          amount DECIMAL(10,2),
+          timestamp DATETIME,
+          status NVARCHAR(50)
+        );
       `);
 
       this.isConnecting = false;
@@ -163,16 +173,6 @@ export class SqlServerStorage implements IStorage {
         .input("timestamp", sql.DateTime, new Date(transaction.timestamp))
         .input("status", sql.NVarChar, transaction.status)
         .query(`
-          IF NOT EXISTS (SELECT 1 FROM transactions)
-          CREATE TABLE transactions (
-            id INT IDENTITY(1,1) PRIMARY KEY,
-            employeeId INT FOREIGN KEY REFERENCES users(id),
-            vendorId INT FOREIGN KEY REFERENCES users(id),
-            amount DECIMAL(10,2),
-            timestamp DATETIME,
-            status NVARCHAR(50)
-          );
-
           INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status)
           OUTPUT INSERTED.*
           VALUES (@employeeId, @vendorId, @amount, @timestamp, @status);
