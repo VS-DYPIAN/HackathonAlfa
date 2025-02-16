@@ -33,7 +33,9 @@ export default function EmployeeDashboard() {
         throw new Error(error.message || "Failed to fetch vendors");
       }
       const users = await res.json();
-      return users.filter(user => user.role.toLowerCase() === "vendor");
+      // If single user is returned, wrap in array
+      const userArray = Array.isArray(users) ? users : [users];
+      return userArray.filter(user => user.role === "vendor");
     },
   });
 
