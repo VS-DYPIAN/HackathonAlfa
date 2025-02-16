@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ export default function AuthPage() {
   const [, setLocation] = useLocation();
 
   useEffect(() => {
+    useEffect(() => {
     if (user) {
       switch (user.role) {
         case Role.ADMIN:
@@ -29,6 +30,7 @@ export default function AuthPage() {
           break;
       }
     }
+  }, [user, setLocation]);
   }, [user, setLocation]);
 
   if (user) {
