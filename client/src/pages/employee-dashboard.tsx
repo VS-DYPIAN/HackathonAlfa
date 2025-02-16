@@ -41,10 +41,32 @@ export default function EmployeeDashboard() {
 
   // Auto-select first vendor when vendors list loads
   useEffect(() => {
-    if (vendors && vendors.length > 0 && !selectedVendorId) {
+    if (vendors?.length > 0 && !selectedVendorId) {
       setSelectedVendorId(vendors[0].id.toString());
     }
-  }, [vendors]);
+  }, [vendors, selectedVendorId]);
+
+  // Add loading state handler
+  if (vendorsLoading) {
+    return (
+      <div className="min-h-screen bg-background p-8">
+        <div className="max-w-6xl mx-auto">
+          <div>Loading vendors...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle no vendors case
+  if (!vendors || vendors.length === 0) {
+    return (
+      <div className="min-h-screen bg-background p-8">
+        <div className="max-w-6xl mx-auto">
+          <div>No vendors available. Please contact administrator.</div>
+        </div>
+      </div>
+    );
+  }
 
   const { data: transactions } = useQuery<any[]>({
     queryKey: ["/api/employee/transactions"],
