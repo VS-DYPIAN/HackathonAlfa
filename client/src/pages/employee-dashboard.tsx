@@ -44,7 +44,13 @@ export default function EmployeeDashboard() {
   });
 
   const payVendorMutation = useMutation({
-    mutationFn: async ({ vendorId, amount }: { vendorId: number; amount: number }) => {
+    mutationFn: async ({
+      vendorId,
+      amount,
+    }: {
+      vendorId: number;
+      amount: number;
+    }) => {
       const res = await apiRequest("POST", "/api/employee/pay", {
         vendorId,
         amount,
@@ -55,7 +61,9 @@ export default function EmployeeDashboard() {
       setAmount("");
       setSelectedVendorId("");
 
-      queryClient.invalidateQueries({ queryKey: ["/api/employee/transactions"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/employee/transactions"],
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
 
       // Redirect using window.location
@@ -107,7 +115,7 @@ export default function EmployeeDashboard() {
 
                   // Confirmation before payment
                   const isConfirmed = window.confirm(
-                    `Are you sure you want to proceed with a payment of ₹${amount}?`
+                    `Are you sure you want to proceed with a payment of ₹${amount}?`,
                   );
 
                   if (!isConfirmed) return;
@@ -186,11 +194,13 @@ export default function EmployeeDashboard() {
                 >
                   <div>
                     <p className="font-medium">Amount: ₹{transaction.amount}</p>
-                    <p className="font-medium">Transaction ID: {transaction.transactionId}</p>
+                    <p className="font-medium">
+                      Transaction ID: {transaction.transactionId}
+                    </p>
                     <p className="text-sm text-muted-foreground">
                       {format(
                         new Date(transaction.timestamp),
-                        "MMM d, yyyy h:mm a"
+                        "MMM d, yyyy h:mm a",
                       )}
                     </p>
                   </div>
