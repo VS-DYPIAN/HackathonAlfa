@@ -134,7 +134,7 @@ export class SqlServerStorage implements IStorage {
     }
   }
 
-  async createTransaction(transaction: any): Promise<any> {
+  async createTransaction(transaction: InsertTransaction): Promise<Transaction> {
     await this.ensureConnection();
     try {
       // Generate a unique transaction ID
@@ -144,8 +144,8 @@ export class SqlServerStorage implements IStorage {
         .request()
         .input("employeeId", sql.Int, transaction.employeeId)
         .input("vendorId", sql.Int, transaction.vendorId)
-        .input("amount", sql.Decimal(10,2), transaction.amount)
-        .input("timestamp", sql.DateTime, transaction.timestamp)
+        .input("amount", sql.Decimal(10,2), parseFloat(transaction.amount.toString()))
+        .input("timestamp", sql.DateTime, new Date(transaction.timestamp))
         .input("status", sql.NVarChar, transaction.status)
         .input("transactionId", sql.NVarChar, transactionId)
         .query(`

@@ -60,8 +60,10 @@ export default function EmployeeDashboard() {
       amount: number;
     }) => {
       const res = await apiRequest("POST", "/api/employee/pay", {
-        vendorId,
-        amount,
+        vendorId: parseInt(vendorId.toString()),
+        amount: parseFloat(amount.toString()),
+        timestamp: new Date().toISOString(),
+        status: "completed"
       });
       if (!res.ok) {
         const error = await res.json();
