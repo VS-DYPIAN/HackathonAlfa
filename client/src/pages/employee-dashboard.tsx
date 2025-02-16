@@ -31,7 +31,13 @@ export default function EmployeeDashboard() {
       if (!res.ok) {
         throw new Error("Failed to fetch vendors");
       }
-      return res.json();
+      const vendorList = await res.json();
+      // Set default vendor (Acai) if not already selected
+      if (!selectedVendorId && vendorList.length > 0) {
+        const defaultVendor = vendorList.find(v => v.username === "Acai") || vendorList[0];
+        setSelectedVendorId(defaultVendor.id.toString());
+      }
+      return vendorList;
     },
   });
 
@@ -140,8 +146,7 @@ export default function EmployeeDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       {vendors
-                        ?.filter((v) => v.role === "vendor")
-                        .map((vendor) => (
+                        ?.map((vendor) => (
                           <SelectItem
                             key={vendor.id}
                             value={vendor.id.toString()}

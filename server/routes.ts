@@ -76,8 +76,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/vendors", async (req, res) => {
     try {
+      // Create default Acai vendor if not exists
+      await storage.pool.request()
+        .query(`
+          IF NOT EXISTS (SELECT 1 FROM users WHERE username = 'Acai' AND role = 'vendor')
+          INSERT INTO users (username, password, role)
+          VALUES ('Acai', '${await hashPassword("acai123")}', 'vendor')
+        `);
+      
       const result = await storage.pool.request()
-        .query("SELECT id, username FROM users WHERE role = 'vendor'");
+        .query("SELECT id, username FROM users WHERE role = 'vendor' ORDER BY CASE WHEN username = 'Acai' THEN 0 ELSE 1 END, username");
       res.json(result.recordset);
     } catch (error) {
       console.error('Error fetching vendors:', error);
