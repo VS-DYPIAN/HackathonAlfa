@@ -74,5 +74,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(req.user);
   });
 
+  app.get("/api/vendors", async (req, res) => {
+    try {
+      const result = await storage.pool.request()
+        .query("SELECT id, username FROM users WHERE role = 'vendor'");
+      res.json(result.recordset);
+    } catch (error) {
+      console.error('Error fetching vendors:', error);
+      res.status(500).json({ message: "Failed to fetch vendors" });
+    }
+  });
+
   return httpServer;
 }
