@@ -105,28 +105,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Missing required fields" });
       }
 
-      // Create transaction first
-      const transaction = await storage.createTransaction({
-        employeeId: req.user.id,
-        vendorId: vendorId,
-        amount: amount,
-        timestamp: new Date(),
-        status: 'completed'
-      });
+      try {
+        // Start a transaction
+        const pool = await sql.connect(storage.pool.config);
+        const transaction = await pool.transaction();
 
-      // Update employee wallet balance
-      await storage.pool.request()
-        .input('userId', sql.Int, req.user.id)
-        .input('amount', sql.Decimal(10,2), amount)
-        .query('UPDATE users SET walletBalance = walletBalance - @amount WHERE id = @userId');
+        try {
+          // Create transaction record
+          const result = await transaction.request()
+            .input('employeeId', sql.Int, req.user.id)
+            .input('vendorId', sql.Int, vendorId)
+            .input('amount', sql.Decimal(10,2), amount)
+            .input('timestamp', sql.DateTime, new Date())
+            .input('status', sql.NVarChar, 'completed')
+            .query(`
+              INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status)
+              OUTPUT INSERTED.*
+              VALUES (@employeeId, @vendorId, @amount, @timestamp, @status);
+            `);
 
-      // Update vendor wallet balance  
-      await storage.pool.request()
-        .input('vendorId', sql.Int, vendorId)
-        .input('amount', sql.Decimal(10,2), amount)
-        .query('UPDATE users SET walletBalance = walletBalance + @amount WHERE id = @vendorId');
+          // Update employee wallet balance
+          await transaction.request()
+            .input('userId', sql.Int, req.user.id)
+            .input('amount', sql.Decimal(10,2), amount)
+            .query('UPDATE users SET walletBalance = walletBalance - @amount WHERE id = @userId');
 
-      res.json(transaction);
+          // Update vendor wallet balance
+          await transaction.request()
+            .input('vendorId', sql.Int, vendorId)
+            .input('amount', sql.Decimal(10,2), amount)
+            .query('UPDATE users SET walletBalance = walletBalance + @amount WHERE id = @vendorId');
+
+          // Commit transaction
+          await transaction.commit();
+          
+          // Send only necessary transaction data
+          const transactionData = {
+            id: result.recordset[0].id,
+            employeeId: result.recordset[0].employeeId,
+            vendorId: result.recordset[0].vendorId,
+            amount: result.recordset[0].amount,
+            timestamp: result.recordset[0].timestamp,
+            status: result.recordset[0].status
+          };
+          
+          res.json(transactionData);
+        } catch (err) {
+          await transaction.rollback();
+          throw err;
+        }
+      } catch (error) {
+        console.error('Payment error:', error);
+        res.status(500).json({ message: 'Payment failed' });
+      }
     } catch (error) {
       console.error('Payment error:', error);
       res.status(500).json({ message: 'Payment failed' });

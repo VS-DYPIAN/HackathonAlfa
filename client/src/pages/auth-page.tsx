@@ -15,18 +15,23 @@ export default function AuthPage() {
   const { loginMutation, registerMutation, user } = useAuth();
   const [, setLocation] = useLocation();
 
-  if (user) {
-    switch (user.role) {
-      case Role.ADMIN:
-        setLocation("/admin");
-        break;
-      case Role.EMPLOYEE:
-        setLocation("/employee");
-        break;
-      case Role.VENDOR:
-        setLocation("/vendor");
-        break;
+  useEffect(() => {
+    if (user) {
+      switch (user.role) {
+        case Role.ADMIN:
+          setLocation("/admin");
+          break;
+        case Role.EMPLOYEE:
+          setLocation("/employee");
+          break;
+        case Role.VENDOR:
+          setLocation("/vendor");
+          break;
+      }
     }
+  }, [user, setLocation]);
+
+  if (user) {
     return null;
   }
 
