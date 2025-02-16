@@ -167,23 +167,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const ws = XLSX.utils.json_to_sheet(transactions);
         XLSX.utils.book_append_sheet(wb, ws, "Transactions");
         const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-        
+
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', 'attachment; filename=transactions.xlsx');
         return res.send(buffer);
       } 
-      
+
       if (format === 'pdf') {
         const PDFDocument = require('pdfkit');
         const doc = new PDFDocument();
-        
+
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'attachment; filename=transactions.pdf');
         doc.pipe(res);
-        
+
         doc.fontSize(16).text('Transaction Report', { align: 'center' });
         doc.moveDown();
-        
+
         transactions.forEach(t => {
           doc.fontSize(12).text(`Date: ${new Date(t.timestamp).toLocaleString()}`);
           doc.text(`Employee: ${t.employeeName}`);
@@ -191,7 +191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           doc.text(`Status: ${t.status}`);
           doc.moveDown();
         });
-        
+
         doc.end();
         return;
       }
