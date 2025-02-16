@@ -27,9 +27,13 @@ export default function EmployeeDashboard() {
   const { data: vendors } = useQuery<User[]>({
     queryKey: ["/api/vendors"],
     queryFn: async () => {
-      const res = await fetch("/api/vendors");
-      if (!res.ok) throw new Error("Failed to fetch vendors");
-      return res.json();
+      const res = await fetch("/api/user");
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to fetch vendors");
+      }
+      const users = await res.json();
+      return users.filter(user => user.role.toLowerCase() === "vendor");
     },
   });
 
