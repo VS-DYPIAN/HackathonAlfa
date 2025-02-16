@@ -34,8 +34,8 @@ export default function EmployeeDashboard() {
         throw new Error(error.message || "Failed to fetch vendors");
       }
       const users = await res.json();
-      // Filter vendors on the client side
-      return users.filter(user => user.role === "vendor");
+      // Filter vendors on the client side (case insensitive)
+      return users.filter(user => user.role.toLowerCase() === "vendor");
     },
   });
 
