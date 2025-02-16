@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer } from "ws";
-import { setupAuth } from "./auth";
+import { setupAuth, hashPassword } from "./auth";
 import { storage } from "./storage";
 import { insertUserSchema } from "@shared/schema";
 import passport from "passport";
@@ -30,20 +30,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.post("/api/register", async (req, res) => {
     try {
+      console.log('Registration attempt with payload:', req.body);
       const userData = insertUserSchema.parse(req.body);
+      console.log('Validation passed, parsed data:', userData);
+
       const existingUser = await storage.getUserByUsername(userData.username);
 
       if (existingUser) {
-        return res.status(400).json({ message: "Username already exists" });
+        return res.status(400).json({ 
+          message: "Username already exists" 
+        });
       }
 
-      const user = await storage.createUser(userData);
+      // Hash the password before storing
+      const hashedPassword = await hashPassword(userData.password);
+      const user = await storage.createUser({
+        ...userData,
+        password: hashedPassword
+      });
+
       req.login(user, (err) => {
-        if (err) throw err;
+        if (err) {
+          console.error('Login error after registration:', err);
+          return res.status(500).json({ 
+            message: "Registration successful but login failed" 
+          });
+        }
         res.status(201).json(user);
       });
     } catch (error) {
-      res.status(400).json({ message: "Invalid input" });
+      if (error instanceof z.ZodError) {
+        console.error('Validation error:', error.errors);
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors 
+        });
+      }
+      console.error('Registration error:', error);
+      res.status(400).json({ 
+        message: "Registration failed", 
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   });
 

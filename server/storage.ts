@@ -46,6 +46,7 @@ export class SqlServerStorage implements IStorage {
   sessionStore: session.Store;
   private connectionRetries: number = 3;
   private retryDelayMs: number = 5000;
+  private isConnecting: boolean = false;
 
   constructor() {
     this.pool = new sql.ConnectionPool(dbConfig);
@@ -55,9 +56,17 @@ export class SqlServerStorage implements IStorage {
   }
 
   async connect(): Promise<void> {
+    if (this.isConnecting) {
+      console.log('Connection attempt already in progress');
+      return;
+    }
+
+    this.isConnecting = true;
+
     for (let attempt = 1; attempt <= this.connectionRetries; attempt++) {
       try {
         if (!this.pool.connected) {
+          console.log(`Attempting to connect to database (attempt ${attempt}/${this.connectionRetries})`);
           await this.pool.connect();
         }
         console.log('Connected to SQL Server successfully');
@@ -88,19 +97,22 @@ export class SqlServerStorage implements IStorage {
           )
         `);
 
+        this.isConnecting = false;
         return;
       } catch (err) {
         console.error(`Database connection attempt ${attempt} failed:`, err);
         if (attempt === this.connectionRetries) {
-          throw new Error(`Failed to connect to database after ${this.connectionRetries} attempts`);
+          this.isConnecting = false;
+          throw new Error(`Failed to connect to database after ${this.connectionRetries} attempts: ${err.message}`);
         }
+        console.log(`Waiting ${this.retryDelayMs}ms before next attempt...`);
         await new Promise(resolve => setTimeout(resolve, this.retryDelayMs));
       }
     }
   }
 
   private async ensureConnection() {
-    if (!this.pool.connected) {
+    if (!this.pool.connected && !this.isConnecting) {
       await this.connect();
     }
   }
