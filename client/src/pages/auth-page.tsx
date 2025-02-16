@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,25 +15,18 @@ export default function AuthPage() {
   const { loginMutation, registerMutation, user } = useAuth();
   const [, setLocation] = useLocation();
 
-  useEffect(() => {
-    useEffect(() => {
-    if (user) {
-      switch (user.role) {
-        case Role.ADMIN:
-          setLocation("/admin");
-          break;
-        case Role.EMPLOYEE:
-          setLocation("/employee");
-          break;
-        case Role.VENDOR:
-          setLocation("/vendor");
-          break;
-      }
-    }
-  }, [user, setLocation]);
-  }, [user, setLocation]);
-
   if (user) {
+    switch (user.role) {
+      case Role.ADMIN:
+        setLocation("/admin");
+        break;
+      case Role.EMPLOYEE:
+        setLocation("/employee");
+        break;
+      case Role.VENDOR:
+        setLocation("/vendor");
+        break;
+    }
     return null;
   }
 

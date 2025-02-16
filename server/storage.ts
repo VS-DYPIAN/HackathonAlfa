@@ -31,8 +31,6 @@ export interface IStorage {
   sessionStore: session.Store;
   pool: sql.ConnectionPool;
   connect(): Promise<void>;
-  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
-  getEmployeeTransactions(employeeId: number): Promise<Transaction[]>; // Added function
 }
 
 export class SqlServerStorage implements IStorage {
@@ -158,60 +156,30 @@ export class SqlServerStorage implements IStorage {
             (SELECT walletBalance FROM users WHERE id = @employeeId) as employeeBalance,
             (SELECT 1 FROM users WHERE id = @vendorId) as vendorExists
         `);
-
+      
       if (!checkUsers.recordset[0]?.vendorExists) {
         throw new Error('Vendor not found');
       }
-
+      
       if (checkUsers.recordset[0]?.employeeBalance < transaction.amount) {
         throw new Error('Insufficient balance');
       }
 
-      // Update vendor wallet balance and create transaction
-      const transactionResult = await this.pool.transaction(async (transaction) => {
-        await transaction.request()
-          .input("vendorId", sql.Int, transaction.vendorId)
-          .input("amount", sql.Decimal(10, 2), parseFloat(transaction.amount.toString()))
-          .query(`UPDATE users SET walletBalance = walletBalance + @amount WHERE id = @vendorId`);
-
-        const result = await transaction.request()
-          .input("employeeId", sql.Int, transaction.employeeId)
-          .input("vendorId", sql.Int, transaction.vendorId)
-          .input("amount", sql.Decimal(10, 2), parseFloat(transaction.amount.toString()))
-          .input("timestamp", sql.DateTime, new Date(transaction.timestamp))
-          .input("status", sql.NVarChar, transaction.status)
-          .query(`
-            INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status)
-            OUTPUT INSERTED.*
-            VALUES (@employeeId, @vendorId, @amount, @timestamp, @status);
-          `);
-        return result.recordset[0];
-      });
-      return transactionResult;
-
-    } catch (err) {
-      console.error('Error creating transaction:', err);
-      throw err;
-    }
-  }
-
-  async getEmployeeTransactions(employeeId: number): Promise<Transaction[]> {
-    await this.ensureConnection();
-    try {
       const result = await this.pool
         .request()
-        .input("employeeId", sql.Int, employeeId)
+        .input("employeeId", sql.Int, transaction.employeeId)
+        .input("vendorId", sql.Int, transaction.vendorId)
+        .input("amount", sql.Decimal(10,2), parseFloat(transaction.amount.toString()))
+        .input("timestamp", sql.DateTime, new Date(transaction.timestamp))
+        .input("status", sql.NVarChar, transaction.status)
         .query(`
-          SELECT 
-            t.*,
-            t.id as transactionId
-          FROM transactions t 
-          WHERE t.employeeId = @employeeId
-          ORDER BY t.timestamp DESC
+          INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status)
+          OUTPUT INSERTED.*
+          VALUES (@employeeId, @vendorId, @amount, @timestamp, @status);
         `);
-      return result.recordset;
+      return result.recordset[0];
     } catch (err) {
-      console.error('Error getting employee transactions:', err);
+      console.error('Error creating transaction:', err);
       throw err;
     }
   }
