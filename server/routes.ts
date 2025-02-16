@@ -133,6 +133,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Report generation endpoints
+  app.get("/api/vendor/reports", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "vendor") {
+      return res.sendStatus(403);
+    }
+
+    const format = req.query.format as string;
+    const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(0);
+    const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
+
+    try {
+      const result = await storage.pool.request()
+        .input('vendorId', sql.Int, req.user.id)
+        .input('startDate', sql.DateTime, startDate)
+        .input('endDate', sql.DateTime, endDate)
+        .query(`
+          SELECT 
+            t.*,
+            e.username as employeeName
+          FROM transactions t
+          JOIN users e ON t.employeeId = e.id
+          WHERE t.vendorId = @vendorId 
+          AND t.timestamp BETWEEN @startDate AND @endDate
+          ORDER BY t.timestamp DESC
+        `);
+
+      const transactions = result.recordset;
+
+      if (format === 'excel') {
+        const XLSX = require('xlsx');
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(transactions);
+        XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=transactions.xlsx');
+        return res.send(buffer);
+      } 
+      
+      if (format === 'pdf') {
+        const PDFDocument = require('pdfkit');
+        const doc = new PDFDocument();
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename=transactions.pdf');
+        doc.pipe(res);
+        
+        doc.fontSize(16).text('Transaction Report', { align: 'center' });
+        doc.moveDown();
+        
+        transactions.forEach(t => {
+          doc.fontSize(12).text(`Date: ${new Date(t.timestamp).toLocaleString()}`);
+          doc.text(`Employee: ${t.employeeName}`);
+          doc.text(`Amount: ₹${t.amount}`);
+          doc.text(`Status: ${t.status}`);
+          doc.moveDown();
+        });
+        
+        doc.end();
+        return;
+      }
+
+      res.json(transactions);
+    } catch (error) {
+      console.error('Report generation error:', error);
+      res.status(500).json({ message: 'Failed to generate report' });
+    }
+  });
 
   return httpServer;
 }

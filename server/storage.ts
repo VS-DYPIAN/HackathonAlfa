@@ -170,12 +170,11 @@ export class SqlServerStorage implements IStorage {
           IF NOT EXISTS (SELECT 1 FROM transactions)
           CREATE TABLE transactions (
             id INT IDENTITY(1,1) PRIMARY KEY,
-            employeeId INT,
-            vendorId INT,
+            employeeId INT FOREIGN KEY REFERENCES users(id),
+            vendorId INT FOREIGN KEY REFERENCES users(id),
             amount DECIMAL(10,2),
             timestamp DATETIME,
-            status NVARCHAR(50),
-            transactionId NVARCHAR(50)
+            status NVARCHAR(50)
           );
 
           INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status, transactionId)
