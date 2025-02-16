@@ -106,30 +106,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create transaction first
-      const transaction = await storage.createTransaction({
-        employeeId: req.user.id,
-        vendorId: vendorId,
-        amount: amount,
-        timestamp: new Date(),
-        status: 'completed'
-      });
+      const transaction = new sql.Transaction(storage.pool);
+      await transaction.begin();
+      try {
+        const result = await transaction.request()
+          .input('employeeId', sql.Int, req.user.id)
+          .input('vendorId', sql.Int, vendorId)
+          .input('amount', sql.Decimal(10,2), amount)
+          .input('status', sql.VarChar(20), 'pending') // Initialize as pending
+          .query(`
+            INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status)
+            VALUES (@employeeId, @vendorId, @amount, GETDATE(), @status);
+            SELECT SCOPE_IDENTITY() as transactionId;
+          `);
+        const transactionId = result.recordset[0].transactionId;
 
-      // Update employee wallet balance
-      await storage.pool.request()
-        .input('userId', sql.Int, req.user.id)
-        .input('amount', sql.Decimal(10,2), amount)
-        .query('UPDATE users SET walletBalance = walletBalance - @amount WHERE id = @userId');
+        // Update employee wallet balance
+        await transaction.request()
+          .input('userId', sql.Int, req.user.id)
+          .input('amount', sql.Decimal(10,2), amount)
+          .query('UPDATE users SET walletBalance = walletBalance - @amount WHERE id = @userId');
 
-      // Update vendor wallet balance  
-      await storage.pool.request()
-        .input('vendorId', sql.Int, vendorId)
-        .input('amount', sql.Decimal(10,2), amount)
-        .query('UPDATE users SET walletBalance = walletBalance + @amount WHERE id = @vendorId');
+        // Update vendor wallet balance  
+        await transaction.request()
+          .input('vendorId', sql.Int, vendorId)
+          .input('amount', sql.Decimal(10,2), amount)
+          .query('UPDATE users SET walletBalance = walletBalance + @amount WHERE id = @vendorId');
 
-      res.json(transaction);
+        await transaction.commit();
+        res.json({ transactionId, ...result.recordset[0] });
+      } catch (error) {
+          await transaction.rollback();
+          console.error('Payment error (transaction rollback):', error);
+          res.status(500).json({ message: 'Payment failed', error: error.message });
+      }
     } catch (error) {
       console.error('Payment error:', error);
-      res.status(500).json({ message: 'Payment failed' });
+      res.status(500).json({ message: 'Payment failed', error: error.message });
+    }
+  });
+
+  // Transaction history endpoints
+  app.get("/api/employee/transactions", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "employee") {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const result = await storage.pool.request()
+        .input('employeeId', sql.Int, req.user.id)
+        .query(`
+          SELECT 
+            t.*,
+            v.username as vendorName
+          FROM transactions t
+          JOIN users v ON t.vendorId = v.id
+          WHERE t.employeeId = @employeeId
+          ORDER BY t.timestamp DESC
+        `);
+      res.json(result.recordset);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      res.status(500).json({ message: "Failed to fetch transactions" });
+    }
+  });
+
+  app.get("/api/vendor/transactions", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "vendor") {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const result = await storage.pool.request()
+        .input('vendorId', sql.Int, req.user.id)
+        .query(`
+          SELECT 
+            t.*,
+            e.username as employeeName
+          FROM transactions t
+          JOIN users e ON t.employeeId = e.id
+          WHERE t.vendorId = @vendorId
+          ORDER BY t.timestamp DESC
+        `);
+      res.json(result.recordset);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      res.status(500).json({ message: "Failed to fetch transactions" });
     }
   });
 
@@ -167,23 +229,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const ws = XLSX.utils.json_to_sheet(transactions);
         XLSX.utils.book_append_sheet(wb, ws, "Transactions");
         const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-        
+
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', 'attachment; filename=transactions.xlsx');
         return res.send(buffer);
       } 
-      
+
       if (format === 'pdf') {
         const PDFDocument = require('pdfkit');
         const doc = new PDFDocument();
-        
+
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'attachment; filename=transactions.pdf');
         doc.pipe(res);
-        
+
         doc.fontSize(16).text('Transaction Report', { align: 'center' });
         doc.moveDown();
-        
+
         transactions.forEach(t => {
           doc.fontSize(12).text(`Date: ${new Date(t.timestamp).toLocaleString()}`);
           doc.text(`Employee: ${t.employeeName}`);
@@ -191,7 +253,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           doc.text(`Status: ${t.status}`);
           doc.moveDown();
         });
-        
+
         doc.end();
         return;
       }

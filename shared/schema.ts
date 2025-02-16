@@ -26,7 +26,10 @@ export const transactionSchema = z.object({
   employeeId: z.number(),
   vendorId: z.number(),
   amount: z.number(),
-  createdAt: z.date(),
+  timestamp: z.date(),
+  status: z.string(),
+  employeeName: z.string().optional(),
+  vendorName: z.string().optional()
 });
 
 export const insertTransactionSchema = transactionSchema.omit({ id: true });

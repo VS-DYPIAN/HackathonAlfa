@@ -217,7 +217,7 @@ export default function EmployeeDashboard() {
                   <div>
                     <p className="font-medium">Amount: ₹{transaction.amount}</p>
                     <p className="font-medium">
-                      Transaction ID: {transaction.transactionId}
+                      Vendor: {transaction.vendorName}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {format(
