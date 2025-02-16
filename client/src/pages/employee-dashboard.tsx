@@ -25,12 +25,16 @@ export default function EmployeeDashboard() {
   const [amount, setAmount] = useState("");
 
   // Fetch vendors
-  const { data: vendors } = useQuery<User[]>({
+  const { data: vendors, isLoading: vendorsLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
     queryFn: async () => {
       const res = await fetch("/api/users");
-      if (!res.ok) throw new Error("Failed to fetch vendors");
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to fetch vendors");
+      }
       const users = await res.json();
+      // Filter vendors on the client side
       return users.filter(user => user.role === "vendor");
     },
   });
@@ -40,13 +44,16 @@ export default function EmployeeDashboard() {
     if (vendors && vendors.length > 0 && !selectedVendorId) {
       setSelectedVendorId(vendors[0].id.toString());
     }
-  }, [vendors, selectedVendorId]);
+  }, [vendors]);
 
   const { data: transactions } = useQuery<any[]>({
     queryKey: ["/api/employee/transactions"],
     queryFn: async () => {
       const res = await fetch("/api/employee/transactions");
-      if (!res.ok) throw new Error("Failed to fetch transactions");
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to fetch transactions");
+      }
       return res.json();
     },
   });
@@ -65,7 +72,6 @@ export default function EmployeeDashboard() {
     },
     onSuccess: () => {
       setAmount("");
-
       toast({
         title: "Payment successful",
         description: "Your payment has been processed.",
@@ -145,7 +151,7 @@ export default function EmployeeDashboard() {
                     onValueChange={setSelectedVendorId}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a vendor" />
+                      <SelectValue placeholder={vendorsLoading ? "Loading vendors..." : "Select a vendor"} />
                     </SelectTrigger>
                     <SelectContent>
                       {vendors?.map((vendor) => (

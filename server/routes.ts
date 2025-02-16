@@ -11,6 +11,11 @@ const updateWalletSchema = z.object({
   amount: z.number()
 });
 
+const paymentSchema = z.object({
+  vendorId: z.number(),
+  amount: z.number().positive()
+});
+
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
 
@@ -77,8 +82,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(req.user);
   });
 
+  // Employee routes
+  app.post("/api/employee/pay", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== 'employee') return res.status(403).json({ message: "Only employees can make payments" });
+
+    try {
+      const { vendorId, amount } = paymentSchema.parse(req.body);
+
+      // Check if vendor exists and is actually a vendor
+      const vendor = await storage.getUser(vendorId);
+      if (!vendor || vendor.role !== 'vendor') {
+        return res.status(400).json({ message: "Invalid vendor" });
+      }
+
+      // Check if employee has sufficient balance
+      if (req.user.walletBalance < amount) {
+        return res.status(400).json({ message: "Insufficient balance" });
+      }
+
+      // Update employee balance (deduct amount)
+      await storage.updateUserWalletBalance(req.user.id, -amount);
+
+      // Update vendor balance (add amount)
+      await storage.updateUserWalletBalance(vendorId, amount);
+
+      // Return updated employee data
+      const updatedUser = await storage.getUser(req.user.id);
+      res.json(updatedUser);
+    } catch (error) {
+      console.error('Payment error:', error);
+      res.status(400).json({ 
+        message: "Payment failed",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   // Admin routes
   app.get("/api/users", async (req, res) => {
+    if (!req.user || req.user.role !== 'admin') return res.sendStatus(403);
     try {
       const users = await storage.getAllUsers();
       res.json(users);
@@ -90,6 +133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update individual wallet balance
   app.patch("/api/admin/wallet/:userId", async (req, res) => {
+    if (!req.user || req.user.role !== 'admin') return res.sendStatus(403);
     try {
       const { amount } = updateWalletSchema.parse(req.body);
       const userId = parseInt(req.params.userId);
@@ -106,6 +150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update all employee wallet balances
   app.post("/api/admin/wallet/update-all", async (req, res) => {
+    if (!req.user || req.user.role !== 'admin') return res.sendStatus(403);
     try {
       const { amount } = updateWalletSchema.parse(req.body);
       await storage.updateAllEmployeeWalletBalances(amount);
