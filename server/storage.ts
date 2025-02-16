@@ -140,6 +140,24 @@ export class SqlServerStorage implements IStorage {
       // Generate a unique transaction ID
       const transactionId = 'TXN' + Date.now();
       
+      // Ensure both user IDs exist
+      const checkUsers = await this.pool.request()
+        .input("employeeId", sql.Int, transaction.employeeId)
+        .input("vendorId", sql.Int, transaction.vendorId)
+        .query(`
+          SELECT 
+            (SELECT walletBalance FROM users WHERE id = @employeeId) as employeeBalance,
+            (SELECT 1 FROM users WHERE id = @vendorId) as vendorExists
+        `);
+      
+      if (!checkUsers.recordset[0]?.vendorExists) {
+        throw new Error('Vendor not found');
+      }
+      
+      if (checkUsers.recordset[0]?.employeeBalance < transaction.amount) {
+        throw new Error('Insufficient balance');
+      }
+
       const result = await this.pool
         .request()
         .input("employeeId", sql.Int, transaction.employeeId)

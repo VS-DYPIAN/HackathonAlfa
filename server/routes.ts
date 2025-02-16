@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import { insertUserSchema } from "@shared/schema";
 import passport from "passport";
 import { z } from "zod";
+import sql from 'mssql'; // Assuming mssql library is used
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -83,7 +84,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           INSERT INTO users (username, password, role)
           VALUES ('Acai', '${await hashPassword("acai123")}', 'vendor')
         `);
-      
+
       const result = await storage.pool.request()
         .query("SELECT id, username FROM users WHERE role = 'vendor' ORDER BY CASE WHEN username = 'Acai' THEN 0 ELSE 1 END, username");
       res.json(result.recordset);
@@ -92,6 +93,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch vendors" });
     }
   });
+
+  app.post("/api/employee/pay", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "employee") {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { vendorId, amount } = req.body;
+      if (!vendorId || !amount) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Create transaction first
+      const transaction = await storage.createTransaction({
+        employeeId: req.user.id,
+        vendorId: vendorId,
+        amount: amount,
+        timestamp: new Date(),
+        status: 'completed'
+      });
+
+      // Update employee wallet balance
+      await storage.pool.request()
+        .input('userId', sql.Int, req.user.id)
+        .input('amount', sql.Decimal(10,2), amount)
+        .query('UPDATE users SET walletBalance = walletBalance - @amount WHERE id = @userId');
+
+      // Update vendor wallet balance  
+      await storage.pool.request()
+        .input('vendorId', sql.Int, vendorId)
+        .input('amount', sql.Decimal(10,2), amount)
+        .query('UPDATE users SET walletBalance = walletBalance + @amount WHERE id = @vendorId');
+
+      res.json(transaction);
+    } catch (error) {
+      console.error('Payment error:', error);
+      res.status(500).json({ message: 'Payment failed' });
+    }
+  });
+
 
   return httpServer;
 }
