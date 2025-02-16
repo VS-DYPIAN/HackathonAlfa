@@ -12,7 +12,6 @@ export const userSchema = z.object({
   id: z.number(),
   username: z.string().min(3),
   password: z.string().min(6),
-  email: z.string().email(),
   role: z.enum([Role.ADMIN, Role.EMPLOYEE, Role.VENDOR]),
   walletBalance: z.number().default(0),
 });

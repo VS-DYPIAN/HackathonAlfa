@@ -67,7 +67,6 @@ export class SqlServerStorage implements IStorage {
           id INT IDENTITY(1,1) PRIMARY KEY,
           username NVARCHAR(255) NOT NULL UNIQUE,
           password NVARCHAR(255) NOT NULL,
-          email NVARCHAR(255) NOT NULL,
           role NVARCHAR(50) NOT NULL CHECK (role IN ('admin', 'employee', 'vendor')),
           walletBalance DECIMAL(10,2) DEFAULT 0
         )
@@ -122,12 +121,11 @@ export class SqlServerStorage implements IStorage {
         .request()
         .input("username", sql.NVarChar, user.username)
         .input("password", sql.NVarChar, user.password)
-        .input("email", sql.NVarChar, user.email)
         .input("role", sql.NVarChar, user.role)
         .query(`
-          INSERT INTO users (username, password, email, role)
+          INSERT INTO users (username, password, role)
           OUTPUT INSERTED.*
-          VALUES (@username, @password, @email, @role)
+          VALUES (@username, @password, @role)
         `);
       return result.recordset[0];
     } catch (err) {
