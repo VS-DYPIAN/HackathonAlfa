@@ -8,13 +8,24 @@ import { useAuth } from "@/hooks/use-auth";
 import { Role, Transaction } from "@shared/schema";
 import { Download } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
+import { format, isToday } from "date-fns";
+import { CreditCard, ReceiptText } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { FaFilePdf, FaFileExcel } from "react-icons/fa";
+
+type TransactionWithEmployee = Transaction & {
+  employeeName: string;
+};
 
 export default function VendorDashboard() {
-  const { user } = useAuth();
+  const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
-  const [dateRange, setDateRange] = useState({
-    startDate: "",
-    endDate: "",
+  const [dateRange, setDateRange] = useState<{
+    from: Date | undefined;
+    to: Date | undefined;
+  }>({
+    from: undefined,
+    to: undefined,
   });
   const [ws, setWs] = useState<WebSocket | null>(null);
 
@@ -42,123 +53,194 @@ export default function VendorDashboard() {
     return <div>Access denied</div>;
   }
 
-  const { data: transactions } = useQuery<Transaction[]>({
-    queryKey: ["/api/transactions", user.id, dateRange],
+  const { data: transactions } = useQuery<TransactionWithEmployee[]>({
+    queryKey: ["/api/vendor/transactions"],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (dateRange.startDate) params.append("startDate", dateRange.startDate);
-      if (dateRange.endDate) params.append("endDate", dateRange.endDate);
-      params.append("vendorId", user.id.toString());
-
-      const res = await fetch(`/api/transactions?${params}`);
+      const res = await fetch("/api/vendor/transactions");
       if (!res.ok) throw new Error("Failed to fetch transactions");
       return res.json();
-    }
+    },
   });
 
   const downloadReport = async (format: 'pdf' | 'excel') => {
-    const params = new URLSearchParams();
-    if (dateRange.startDate) params.append("startDate", dateRange.startDate);
-    if (dateRange.endDate) params.append("endDate", dateRange.endDate);
-    params.append("vendorId", user.id.toString());
-    params.append("format", format);
+    try {
+      const params = new URLSearchParams({
+        format,
+        ...(dateRange.from && { startDate: dateRange.from.toISOString() }),
+        ...(dateRange.to && { endDate: dateRange.to.toISOString() })
+      });
 
-    const res = await fetch(`/api/reports?${params}`);
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transactions-report.${format}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+      const response = await fetch(`/api/vendor/reports?${params}`);
+      if (!response.ok) throw new Error('Failed to download report');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `vendor_transactions.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Failed to download report:", error);
+    }
   };
 
-  const totalEarnings = transactions?.reduce(
-    (sum: number, t: Transaction) => sum + t.amount,
-    0
-  ) ?? 0;
+  // Calculate total earnings
+  const totalEarnings = transactions
+    ?.filter((t) => t.status === "completed")
+    .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0) || 0;
+
+  // Calculate today's earnings
+  const todayEarnings = transactions
+    ?.filter((t) => t.status === "completed" && isToday(new Date(t.createdAt)))
+    .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0) || 0;
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <h1 className="text-3xl font-bold mb-6">Vendor Dashboard</h1>
+    <div className="min-h-screen bg-background p-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Vendor Dashboard</h1>
+          <div className="flex items-center gap-4">
+            <span>Welcome, {user?.username}</span>
+            <Button
+              variant="outline"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+            >
+              Logout
+            </Button>
+          </div>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Total Earnings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <h2 className="text-2xl font-bold">${totalEarnings.toFixed(2)}</h2>
-        </CardContent>
-      </Card>
+        <div className="grid gap-8 md:grid-cols-3">
+          {/* Total Earnings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-6 w-6" />
+                Total Earnings
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">₹{totalEarnings.toFixed(2)}</p>
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Generate Reports</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Input
-              type="date"
-              value={dateRange.startDate}
-              onChange={(e) => setDateRange(prev => ({
-                ...prev,
-                startDate: e.target.value
-              }))}
-            />
-            <Input
-              type="date"
-              value={dateRange.endDate}
-              onChange={(e) => setDateRange(prev => ({
-                ...prev,
-                endDate: e.target.value
-              }))}
-            />
-            <div className="flex gap-4">
-              <Button onClick={() => downloadReport('pdf')}>
-                <Download className="mr-2 h-4 w-4" />
-                PDF
-              </Button>
-              <Button onClick={() => downloadReport('excel')}>
-                <Download className="mr-2 h-4 w-4" />
-                Excel
-              </Button>
+          {/* Today's Earnings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-6 w-6" />
+                Today's Earnings
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">₹{todayEarnings.toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          {/* Recent Transactions Count */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ReceiptText className="h-6 w-6" />
+                Recent Activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">
+                {transactions?.filter((t) => t.status === "completed").length || 0} transactions received
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Transaction History */}
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle>Transaction History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Date Range & Download Buttons */}
+            <div className="grid gap-4 md:flex md:items-center md:justify-between mb-6">
+              <div className="flex flex-col gap-2 w-full md:w-auto">
+                <Label className="font-medium">Date Range</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    type="date"
+                    value={dateRange.from?.toISOString().split("T")[0] || ""}
+                    onChange={(e) =>
+                      setDateRange((prev) => ({
+                        ...prev,
+                        from: e.target.value ? new Date(e.target.value) : undefined,
+                      }))
+                    }
+                    className="w-full md:w-auto"
+                  />
+                  <Input
+                    type="date"
+                    value={dateRange.to?.toISOString().split("T")[0] || ""}
+                    onChange={(e) =>
+                      setDateRange((prev) => ({
+                        ...prev,
+                        to: e.target.value ? new Date(e.target.value) : undefined,
+                      }))
+                    }
+                    className="w-full md:w-auto"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                <Button onClick={() => downloadReport('excel')} className="flex items-center gap-2 w-full md:w-auto">
+                  <FaFileExcel className="text-green-600" /> Download Excel
+                </Button>
+                <Button onClick={() => downloadReport('pdf')} className="flex items-center gap-2 w-full md:w-auto">
+                  <FaFilePdf className="text-red-600" /> Download PDF
+                </Button>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Transaction History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className="text-left p-2">ID</th>
-                  <th className="text-left p-2">Employee</th>
-                  <th className="text-left p-2">Amount</th>
-                  <th className="text-left p-2">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions?.map((transaction: Transaction) => (
-                  <tr key={transaction.id}>
-                    <td className="p-2">{transaction.id}</td>
-                    <td className="p-2">{transaction.employeeId}</td>
-                    <td className="p-2">${transaction.amount}</td>
-                    <td className="p-2">
-                      {new Date(transaction.createdAt).toLocaleString()}
-                    </td>
-                  </tr>
+            <div className="space-y-4">
+              {transactions
+                ?.slice()
+                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                .map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className="flex items-center justify-between p-4 border rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium">Amount: ₹{transaction.amount}</p>
+                      <p className="text-sm text-muted-foreground">
+                        From: {transaction.employeeName}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {format(new Date(transaction.createdAt), "MMM d, yyyy h:mm a")}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span
+                        className={`px-2 py-1 rounded-full text-sm ${
+                          transaction.status === "completed"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {transaction.status}
+                      </span>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+              {(!transactions || transactions.length === 0) && (
+                <p className="text-center text-muted-foreground">No transactions yet</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
