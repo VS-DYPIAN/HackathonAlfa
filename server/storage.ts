@@ -28,9 +28,6 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  updateUserWalletBalance(userId: number, amount: number): Promise<User>;
-  updateAllEmployeeWalletBalances(amount: number): Promise<void>;
-  getAllUsers(): Promise<User[]>;
   sessionStore: session.Store;
   pool: sql.ConnectionPool;
   connect(): Promise<void>;
@@ -89,17 +86,6 @@ export class SqlServerStorage implements IStorage {
     }
   }
 
-  async getAllUsers(): Promise<User[]> {
-    await this.ensureConnection();
-    try {
-      const result = await this.pool.request().query("SELECT * FROM users");
-      return result.recordset;
-    } catch (err) {
-      console.error('Error getting all users:', err);
-      throw err;
-    }
-  }
-
   async getUser(id: number): Promise<User | undefined> {
     await this.ensureConnection();
     try {
@@ -136,53 +122,14 @@ export class SqlServerStorage implements IStorage {
         .input("username", sql.NVarChar, user.username)
         .input("password", sql.NVarChar, user.password)
         .input("role", sql.NVarChar, user.role)
-        .input("walletBalance", sql.Decimal(10, 2), user.walletBalance || 0)
         .query(`
-          INSERT INTO users (username, password, role, walletBalance)
+          INSERT INTO users (username, password, role)
           OUTPUT INSERTED.*
-          VALUES (@username, @password, @role, @walletBalance)
+          VALUES (@username, @password, @role)
         `);
       return result.recordset[0];
     } catch (err) {
       console.error('Error creating user:', err);
-      throw err;
-    }
-  }
-
-  async updateUserWalletBalance(userId: number, amount: number): Promise<User> {
-    await this.ensureConnection();
-    try {
-      const result = await this.pool
-        .request()
-        .input("userId", sql.Int, userId)
-        .input("amount", sql.Decimal(10, 2), amount)
-        .query(`
-          UPDATE users 
-          SET walletBalance = walletBalance + @amount
-          OUTPUT INSERTED.*
-          WHERE id = @userId
-        `);
-      return result.recordset[0];
-    } catch (err) {
-      console.error('Error updating wallet balance:', err);
-      throw err;
-    }
-  }
-
-  async updateAllEmployeeWalletBalances(amount: number): Promise<void> {
-    await this.ensureConnection();
-    try {
-      await this.pool
-        .request()
-        .input("amount", sql.Decimal(10, 2), amount)
-        .input("role", sql.NVarChar, "employee")
-        .query(`
-          UPDATE users 
-          SET walletBalance = walletBalance + @amount
-          WHERE role = @role
-        `);
-    } catch (err) {
-      console.error('Error updating all employee wallet balances:', err);
       throw err;
     }
   }

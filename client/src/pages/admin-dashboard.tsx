@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Transaction, User, Role } from "@shared/schema";
+import { Transaction, User } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,20 +35,15 @@ export default function AdminDashboard() {
     to: undefined
   });
 
-  // Fetch users with proper error handling
-  const { data: users, isLoading: usersLoading } = useQuery<User[]>({
+  const { data: users } = useQuery<User[]>({
     queryKey: ["/api/users"],
     queryFn: async () => {
       const res = await fetch("/api/users");
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to fetch users");
-      }
+      if (!res.ok) throw new Error("Failed to fetch users");
       return res.json();
     },
   });
 
-  // Fetch transactions with proper date handling
   const { data: transactions, isLoading: transactionsLoading } = useQuery<Transaction[]>({
     queryKey: ["/api/transactions", dateRange],
     queryFn: async () => {
@@ -56,27 +51,16 @@ export default function AdminDashboard() {
       if (dateRange.from) params.append("startDate", dateRange.from.toISOString());
       if (dateRange.to) params.append("endDate", dateRange.to.toISOString());
       const res = await fetch(`/api/transactions?${params}`);
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to fetch transactions");
-      }
+      if (!res.ok) throw new Error("Failed to fetch transactions");
       return res.json();
     }
   });
 
-  // Update single user wallet balance
   const updateWalletMutation = useMutation({
     mutationFn: async ({ userId, amount }: { userId: number; amount: string }) => {
-      if (!userId || !amount) {
-        throw new Error("User ID and amount are required");
-      }
-      const res = await apiRequest("PATCH", `/api/admin/wallet/${userId}`, {
+      const res = await apiRequest("PATCH", `/api/wallet/${userId}`, {
         amount: parseFloat(amount)
       });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to update wallet balance");
-      }
       return res.json();
     },
     onSuccess: () => {
@@ -97,19 +81,11 @@ export default function AdminDashboard() {
     },
   });
 
-  // Update all employee wallet balances
   const updateAllWalletsMutation = useMutation({
     mutationFn: async ({ amount }: { amount: string }) => {
-      if (!amount) {
-        throw new Error("Amount is required");
-      }
       const res = await apiRequest("POST", "/api/admin/wallet/update-all", { 
         amount: parseFloat(amount) 
       });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to update wallet balances");
-      }
       return res.json();
     },
     onSuccess: () => {
@@ -129,7 +105,6 @@ export default function AdminDashboard() {
     },
   });
 
-  // Download report function
   const downloadReport = async (format: 'pdf' | 'csv') => {
     try {
       const params = new URLSearchParams({
@@ -138,7 +113,7 @@ export default function AdminDashboard() {
         ...(dateRange.to && { endDate: dateRange.to.toISOString() })
       });
 
-      const response = await fetch(`/api/admin/reports?${params}`);
+      const response = await fetch(`/api/reports?${params}`);
       if (!response.ok) throw new Error('Failed to download report');
 
       const blob = await response.blob();
@@ -158,12 +133,6 @@ export default function AdminDashboard() {
       });
     }
   };
-
-  // Filter employees
-  const filteredEmployees = users?.filter(u => 
-    u.role === Role.EMPLOYEE && 
-    u.username.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -219,28 +188,25 @@ export default function AdminDashboard() {
                   placeholder="Enter employee name"
                 />
               </div>
-              {usersLoading ? (
-                <p className="text-center">Loading employees...</p>
-              ) : filteredEmployees.length > 0 ? (
-                filteredEmployees.map((employee) => (
-                  <div key={employee.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-medium">{employee.username}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Balance: ₹{employee.walletBalance.toFixed(2)}
-                      </p>
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setSelectedUserId(employee.id)}
-                    >
-                      Update Balance
-                    </Button>
+              {users?.filter(u => 
+                u.role === "employee" && 
+                u.username.toLowerCase().includes(searchTerm.toLowerCase())
+              ).map((employee) => (
+                <div key={employee.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <p className="font-medium">{employee.username}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Balance: ₹{employee.walletBalance.toFixed(2)}
+                    </p>
                   </div>
-                ))
-              ) : (
-                <p className="text-center text-muted-foreground">No employees found</p>
-              )}
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setSelectedUserId(employee.id)}
+                  >
+                    Update Balance
+                  </Button>
+                </div>
+              ))}
             </CardContent>
           </Card>
 
@@ -271,7 +237,7 @@ export default function AdminDashboard() {
                   <Button 
                     type="submit" 
                     className="w-full" 
-                    disabled={updateWalletMutation.isPending || !amount}
+                    disabled={updateWalletMutation.isPending}
                   >
                     {updateWalletMutation.isPending ? "Updating..." : "Update Balance"}
                   </Button>

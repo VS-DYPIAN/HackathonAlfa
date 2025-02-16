@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { User } from "@shared/schema";
+import { User, Transaction } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,60 +24,23 @@ export default function EmployeeDashboard() {
   const [selectedVendorId, setSelectedVendorId] = useState<string>("");
   const [amount, setAmount] = useState("");
 
-  // Fetch vendors
-  const { data: vendors, isLoading: vendorsLoading } = useQuery<User[]>({
-    queryKey: ["/api/users"],
+  const { data: vendors } = useQuery<User[]>({
+    queryKey: ["/api/vendors"],
     queryFn: async () => {
-      const res = await fetch("/api/users");
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to fetch vendors");
-      }
-      const users = await res.json();
-      // Filter vendors on the client side (case insensitive)
-      return users.filter(user => user.role.toLowerCase() === "vendor");
+      const res = await fetch("/api/vendors");
+      if (!res.ok) throw new Error("Failed to fetch vendors");
+      return res.json();
     },
   });
 
-  // Auto-select first vendor when vendors list loads
-  useEffect(() => {
-    if (vendors?.length > 0 && !selectedVendorId) {
-      setSelectedVendorId(vendors[0].id.toString());
-    }
-  }, [vendors, selectedVendorId]);
-
-  // Add loading state handler
-  if (vendorsLoading) {
-    return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-6xl mx-auto">
-          <div>Loading vendors...</div>
-        </div>
-      </div>
-    );
-  }
-
-  // Handle no vendors case
-  if (!vendors || vendors.length === 0) {
-    return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-6xl mx-auto">
-          <div>No vendors available. Please contact administrator.</div>
-        </div>
-      </div>
-    );
-  }
-
-  const { data: transactions } = useQuery<any[]>({
+  const { data: transactions, refetch } = useQuery<Transaction[]>({
     queryKey: ["/api/employee/transactions"],
     queryFn: async () => {
       const res = await fetch("/api/employee/transactions");
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to fetch transactions");
-      }
+      if (!res.ok) throw new Error("Failed to fetch transactions");
       return res.json();
     },
+    refetchOnWindowFocus: true,
   });
 
   const payVendorMutation = useMutation({
@@ -86,29 +49,18 @@ export default function EmployeeDashboard() {
         vendorId,
         amount,
       });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Payment failed");
-      }
       return res.json();
     },
     onSuccess: () => {
       setAmount("");
-      toast({
-        title: "Payment successful",
-        description: "Your payment has been processed.",
-      });
+      setSelectedVendorId("");
 
       queryClient.invalidateQueries({ queryKey: ["/api/employee/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+
+      // Redirect using window.location
+      window.location.href = "/payment";
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Payment failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
   });
 
   return (
@@ -129,7 +81,7 @@ export default function EmployeeDashboard() {
           </div>
         </div>
 
-        {/* Wallet and Payment Section */}
+        {/* Payment Form */}
         <div className="grid gap-8 md:grid-cols-2">
           <Card>
             <CardHeader>
@@ -139,7 +91,7 @@ export default function EmployeeDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold">₹{user?.walletBalance?.toFixed(2) || '0.00'}</p>
+              <p className="text-4xl font-bold">₹{user?.walletBalance}</p>
             </CardContent>
           </Card>
 
@@ -153,6 +105,7 @@ export default function EmployeeDashboard() {
                   e.preventDefault();
                   if (!selectedVendorId || !amount) return;
 
+                  // Confirmation before payment
                   const isConfirmed = window.confirm(
                     `Are you sure you want to proceed with a payment of ₹${amount}?`
                   );
@@ -173,17 +126,19 @@ export default function EmployeeDashboard() {
                     onValueChange={setSelectedVendorId}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={vendorsLoading ? "Loading vendors..." : "Select a vendor"} />
+                      <SelectValue placeholder="Select a vendor" />
                     </SelectTrigger>
                     <SelectContent>
-                      {vendors?.map((vendor) => (
-                        <SelectItem
-                          key={vendor.id}
-                          value={vendor.id.toString()}
-                        >
-                          {vendor.username}
-                        </SelectItem>
-                      ))}
+                      {vendors
+                        ?.filter((v) => v.role === "vendor")
+                        .map((vendor) => (
+                          <SelectItem
+                            key={vendor.id}
+                            value={vendor.id.toString()}
+                          >
+                            {vendor.username}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -207,8 +162,7 @@ export default function EmployeeDashboard() {
                     payVendorMutation.isPending ||
                     !selectedVendorId ||
                     !amount ||
-                    parseFloat(amount) <= 0 ||
-                    (user?.walletBalance && parseFloat(amount) > user.walletBalance)
+                    parseFloat(amount) <= 0
                   }
                 >
                   {payVendorMutation.isPending ? "Processing..." : "Pay"}
@@ -232,10 +186,10 @@ export default function EmployeeDashboard() {
                 >
                   <div>
                     <p className="font-medium">Amount: ₹{transaction.amount}</p>
-                    <p className="font-medium">Transaction ID: {transaction.id}</p>
+                    <p className="font-medium">Transaction ID: {transaction.transactionId}</p>
                     <p className="text-sm text-muted-foreground">
                       {format(
-                        new Date(transaction.createdAt),
+                        new Date(transaction.timestamp),
                         "MMM d, yyyy h:mm a"
                       )}
                     </p>
@@ -247,7 +201,7 @@ export default function EmployeeDashboard() {
                         : "bg-red-100 text-red-800"
                     }`}
                   >
-                    {transaction.status || "completed"}
+                    {transaction.status}
                   </span>
                 </div>
               ))}
