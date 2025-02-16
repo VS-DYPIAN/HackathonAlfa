@@ -63,19 +63,32 @@ export default function EmployeeDashboard() {
         vendorId,
         amount,
       });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Payment failed");
+      }
       return res.json();
     },
     onSuccess: () => {
       setAmount("");
       setSelectedVendorId("");
+      toast({
+        title: "Payment Successful",
+        description: "Transaction has been processed",
+      });
 
+      // Refresh transactions and user data
       queryClient.invalidateQueries({
         queryKey: ["/api/employee/transactions"],
       });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-
-      // Redirect using window.location
-      window.location.href = "/payment";
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Payment Failed",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 

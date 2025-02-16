@@ -133,6 +133,43 @@ export class SqlServerStorage implements IStorage {
       throw err;
     }
   }
+
+  async createTransaction(transaction: any): Promise<any> {
+    await this.ensureConnection();
+    try {
+      // Generate a unique transaction ID
+      const transactionId = 'TXN' + Date.now();
+      
+      const result = await this.pool
+        .request()
+        .input("employeeId", sql.Int, transaction.employeeId)
+        .input("vendorId", sql.Int, transaction.vendorId)
+        .input("amount", sql.Decimal(10,2), transaction.amount)
+        .input("timestamp", sql.DateTime, transaction.timestamp)
+        .input("status", sql.NVarChar, transaction.status)
+        .input("transactionId", sql.NVarChar, transactionId)
+        .query(`
+          IF NOT EXISTS (SELECT 1 FROM transactions)
+          CREATE TABLE transactions (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            employeeId INT,
+            vendorId INT,
+            amount DECIMAL(10,2),
+            timestamp DATETIME,
+            status NVARCHAR(50),
+            transactionId NVARCHAR(50)
+          );
+
+          INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status, transactionId)
+          OUTPUT INSERTED.*
+          VALUES (@employeeId, @vendorId, @amount, @timestamp, @status, @transactionId);
+        `);
+      return result.recordset[0];
+    } catch (err) {
+      console.error('Error creating transaction:', err);
+      throw err;
+    }
+  }
 }
 
 export const storage = new SqlServerStorage();
