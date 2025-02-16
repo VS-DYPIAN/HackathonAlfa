@@ -137,9 +137,6 @@ export class SqlServerStorage implements IStorage {
   async createTransaction(transaction: InsertTransaction): Promise<Transaction> {
     await this.ensureConnection();
     try {
-      // Generate a unique transaction ID
-      const transactionId = 'TXN' + Date.now();
-      
       // Ensure both user IDs exist
       const checkUsers = await this.pool.request()
         .input("employeeId", sql.Int, transaction.employeeId)
@@ -165,7 +162,6 @@ export class SqlServerStorage implements IStorage {
         .input("amount", sql.Decimal(10,2), parseFloat(transaction.amount.toString()))
         .input("timestamp", sql.DateTime, new Date(transaction.timestamp))
         .input("status", sql.NVarChar, transaction.status)
-        .input("transactionId", sql.NVarChar, transactionId)
         .query(`
           IF NOT EXISTS (SELECT 1 FROM transactions)
           CREATE TABLE transactions (
@@ -177,9 +173,9 @@ export class SqlServerStorage implements IStorage {
             status NVARCHAR(50)
           );
 
-          INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status, transactionId)
+          INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status)
           OUTPUT INSERTED.*
-          VALUES (@employeeId, @vendorId, @amount, @timestamp, @status, @transactionId);
+          VALUES (@employeeId, @vendorId, @amount, @timestamp, @status);
         `);
       return result.recordset[0];
     } catch (err) {
