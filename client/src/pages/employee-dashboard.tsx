@@ -186,9 +186,10 @@ export default function EmployeeDashboard() {
                 >
                   <div>
                     <p className="font-medium">Amount: ₹{transaction.amount}</p>
+                    <p className="font-medium">Transaction ID: {transaction.transactionId}</p>
                     <p className="text-sm text-muted-foreground">
                       {format(
-                        new Date(transaction.createdAt),
+                        new Date(transaction.timestamp),
                         "MMM d, yyyy h:mm a"
                       )}
                     </p>
