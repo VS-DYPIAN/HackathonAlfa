@@ -6,7 +6,7 @@ import { storage } from "./storage";
 import { insertUserSchema } from "@shared/schema";
 import passport from "passport";
 import { z } from "zod";
-import sql from 'mssql'; // Assuming mssql library is used
+import sql from "mssql"; // Assuming mssql library is used
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -17,14 +17,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.post("/api/register", async (req, res) => {
     try {
-      console.log('Registration attempt with payload:', req.body);
+      console.log("Registration attempt with payload:", req.body);
       const userData = insertUserSchema.parse(req.body);
-      console.log('Validation passed, parsed data:', userData);
+      console.log("Validation passed, parsed data:", userData);
 
       const existingUser = await storage.getUserByUsername(userData.username);
       if (existingUser) {
-        return res.status(400).json({ 
-          message: "Username already exists" 
+        return res.status(400).json({
+          message: "Username already exists",
         });
       }
 
@@ -32,30 +32,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hashedPassword = await hashPassword(userData.password);
       const user = await storage.createUser({
         ...userData,
-        password: hashedPassword
+        password: hashedPassword,
       });
 
       req.login(user, (err) => {
         if (err) {
-          console.error('Login error after registration:', err);
-          return res.status(500).json({ 
-            message: "Registration successful but login failed" 
+          console.error("Login error after registration:", err);
+          return res.status(500).json({
+            message: "Registration successful but login failed",
           });
         }
         res.status(201).json(user);
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        console.error('Validation error:', error.errors);
-        return res.status(400).json({ 
-          message: "Validation error", 
-          errors: error.errors 
+        console.error("Validation error:", error.errors);
+        return res.status(400).json({
+          message: "Validation error",
+          errors: error.errors,
         });
       }
-      console.error('Registration error:', error);
-      res.status(400).json({ 
-        message: "Registration failed", 
-        error: error instanceof Error ? error.message : String(error)
+      console.error("Registration error:", error);
+      res.status(400).json({
+        message: "Registration failed",
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   });
@@ -78,18 +78,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/vendors", async (req, res) => {
     try {
       // Create default Acai vendor if not exists
-      await storage.pool.request()
-        .query(`
+      await storage.pool.request().query(`
           IF NOT EXISTS (SELECT 1 FROM users WHERE username = 'Acai' AND role = 'vendor')
           INSERT INTO users (username, password, role)
           VALUES ('Acai', '${await hashPassword("acai123")}', 'vendor')
         `);
 
-      const result = await storage.pool.request()
-        .query("SELECT id, username FROM users WHERE role = 'vendor' ORDER BY CASE WHEN username = 'Acai' THEN 0 ELSE 1 END, username");
+      const result = await storage.pool
+        .request()
+        .query(
+          "SELECT id, username FROM users WHERE role = 'vendor' ORDER BY CASE WHEN username = 'Acai' THEN 0 ELSE 1 END, username",
+        );
       res.json(result.recordset);
     } catch (error) {
-      console.error('Error fetching vendors:', error);
+      console.error("Error fetching vendors:", error);
       res.status(500).json({ message: "Failed to fetch vendors" });
     }
   });
@@ -109,11 +111,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const transaction = new sql.Transaction(storage.pool);
       await transaction.begin();
       try {
-        const result = await transaction.request()
-          .input('employeeId', sql.Int, req.user.id)
-          .input('vendorId', sql.Int, vendorId)
-          .input('amount', sql.Decimal(10,2), amount)
-          .input('status', sql.VarChar(20), 'pending') // Initialize as pending
+        const result = await transaction
+          .request()
+          .input("employeeId", sql.Int, req.user.id)
+          .input("vendorId", sql.Int, vendorId)
+          .input("amount", sql.Decimal(10, 2), amount)
+          .input("status", sql.VarChar(20), "completed") // Initialize as pending
           .query(`
             INSERT INTO transactions (employeeId, vendorId, amount, timestamp, status)
             VALUES (@employeeId, @vendorId, @amount, GETDATE(), @status);
@@ -122,27 +125,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const transactionId = result.recordset[0].transactionId;
 
         // Update employee wallet balance
-        await transaction.request()
-          .input('userId', sql.Int, req.user.id)
-          .input('amount', sql.Decimal(10,2), amount)
-          .query('UPDATE users SET walletBalance = walletBalance - @amount WHERE id = @userId');
+        await transaction
+          .request()
+          .input("userId", sql.Int, req.user.id)
+          .input("amount", sql.Decimal(10, 2), amount)
+          .query(
+            "UPDATE users SET walletBalance = walletBalance - @amount WHERE id = @userId",
+          );
 
-        // Update vendor wallet balance  
-        await transaction.request()
-          .input('vendorId', sql.Int, vendorId)
-          .input('amount', sql.Decimal(10,2), amount)
-          .query('UPDATE users SET walletBalance = walletBalance + @amount WHERE id = @vendorId');
+        // Update vendor wallet balance
+        await transaction
+          .request()
+          .input("vendorId", sql.Int, vendorId)
+          .input("amount", sql.Decimal(10, 2), amount)
+          .query(
+            "UPDATE users SET walletBalance = walletBalance + @amount WHERE id = @vendorId",
+          );
 
         await transaction.commit();
         res.json({ transactionId, ...result.recordset[0] });
       } catch (error) {
-          await transaction.rollback();
-          console.error('Payment error (transaction rollback):', error);
-          res.status(500).json({ message: 'Payment failed', error: error.message });
+        await transaction.rollback();
+        console.error("Payment error (transaction rollback):", error);
+        res
+          .status(500)
+          .json({ message: "Payment failed", error: error.message });
       }
     } catch (error) {
-      console.error('Payment error:', error);
-      res.status(500).json({ message: 'Payment failed', error: error.message });
+      console.error("Payment error:", error);
+      res.status(500).json({ message: "Payment failed", error: error.message });
     }
   });
 
@@ -153,9 +164,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
-      const result = await storage.pool.request()
-        .input('employeeId', sql.Int, req.user.id)
-        .query(`
+      const result = await storage.pool
+        .request()
+        .input("employeeId", sql.Int, req.user.id).query(`
           SELECT 
             t.*,
             v.username as vendorName
@@ -166,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `);
       res.json(result.recordset);
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      console.error("Error fetching transactions:", error);
       res.status(500).json({ message: "Failed to fetch transactions" });
     }
   });
@@ -177,9 +188,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
-      const result = await storage.pool.request()
-        .input('vendorId', sql.Int, req.user.id)
-        .query(`
+      const result = await storage.pool
+        .request()
+        .input("vendorId", sql.Int, req.user.id).query(`
           SELECT 
             t.*,
             e.username as employeeName
@@ -190,7 +201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `);
       res.json(result.recordset);
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      console.error("Error fetching transactions:", error);
       res.status(500).json({ message: "Failed to fetch transactions" });
     }
   });
@@ -202,15 +213,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const format = req.query.format as string;
-    const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(0);
-    const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
+    const startDate = req.query.startDate
+      ? new Date(req.query.startDate as string)
+      : new Date(0);
+    const endDate = req.query.endDate
+      ? new Date(req.query.endDate as string)
+      : new Date();
 
     try {
-      const result = await storage.pool.request()
-        .input('vendorId', sql.Int, req.user.id)
-        .input('startDate', sql.DateTime, startDate)
-        .input('endDate', sql.DateTime, endDate)
-        .query(`
+      const result = await storage.pool
+        .request()
+        .input("vendorId", sql.Int, req.user.id)
+        .input("startDate", sql.DateTime, startDate)
+        .input("endDate", sql.DateTime, endDate).query(`
           SELECT 
             t.*,
             e.username as employeeName
@@ -223,31 +238,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const transactions = result.recordset;
 
-      if (format === 'excel') {
-        const XLSX = require('xlsx');
+      if (format === "excel") {
+        const XLSX = require("xlsx");
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(transactions);
         XLSX.utils.book_append_sheet(wb, ws, "Transactions");
-        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', 'attachment; filename=transactions.xlsx');
+        res.setHeader(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        );
+        res.setHeader(
+          "Content-Disposition",
+          "attachment; filename=transactions.xlsx",
+        );
         return res.send(buffer);
-      } 
+      }
 
-      if (format === 'pdf') {
-        const PDFDocument = require('pdfkit');
+      if (format === "pdf") {
+        const PDFDocument = require("pdfkit");
         const doc = new PDFDocument();
 
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'attachment; filename=transactions.pdf');
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          "attachment; filename=transactions.pdf",
+        );
         doc.pipe(res);
 
-        doc.fontSize(16).text('Transaction Report', { align: 'center' });
+        doc.fontSize(16).text("Transaction Report", { align: "center" });
         doc.moveDown();
 
-        transactions.forEach(t => {
-          doc.fontSize(12).text(`Date: ${new Date(t.timestamp).toLocaleString()}`);
+        transactions.forEach((t) => {
+          doc
+            .fontSize(12)
+            .text(`Date: ${new Date(t.timestamp).toLocaleString()}`);
           doc.text(`Employee: ${t.employeeName}`);
           doc.text(`Amount: ₹${t.amount}`);
           doc.text(`Status: ${t.status}`);
@@ -260,8 +286,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(transactions);
     } catch (error) {
-      console.error('Report generation error:', error);
-      res.status(500).json({ message: 'Failed to generate report' });
+      console.error("Report generation error:", error);
+      res.status(500).json({ message: "Failed to generate report" });
     }
   });
 

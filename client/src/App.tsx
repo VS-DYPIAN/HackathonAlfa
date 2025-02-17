@@ -9,6 +9,7 @@ import AdminDashboard from "@/pages/admin-dashboard";
 import EmployeeDashboard from "@/pages/employee-dashboard";
 import VendorDashboard from "@/pages/vendor-dashboard";
 import { ProtectedRoute } from "./lib/protected-route";
+import Payment from "@/pages/Payment";
 
 function Router() {
   return (
@@ -18,6 +19,7 @@ function Router() {
       <ProtectedRoute path="/employee" component={EmployeeDashboard} />
       <ProtectedRoute path="/vendor" component={VendorDashboard} />
       <Route path="/" component={AuthPage} />
+      <Route path="/payment" component={Payment} />
       <Route component={NotFound} />
     </Switch>
   );

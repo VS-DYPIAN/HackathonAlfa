@@ -6,7 +6,7 @@ export const Role = {
   VENDOR: "vendor",
 } as const;
 
-export type RoleType = typeof Role[keyof typeof Role];
+export type RoleType = (typeof Role)[keyof typeof Role];
 
 export const userSchema = z.object({
   id: z.number(),
@@ -27,9 +27,9 @@ export const transactionSchema = z.object({
   vendorId: z.number(),
   amount: z.number(),
   timestamp: z.date(),
-  status: z.string(),
+  status: z.enum(["completed"]),
   employeeName: z.string().optional(),
-  vendorName: z.string().optional()
+  vendorName: z.string().optional(),
 });
 
 export const insertTransactionSchema = transactionSchema.omit({ id: true });
